@@ -1,4 +1,4 @@
-'''HdM Grade Calculator'''
+"""HdM Grade Calculator"""
 from getpass import getpass
 import mechanicalsoup
 
@@ -15,6 +15,12 @@ except:
 
 username = input("Input your username: ")
 password = getpass("Input your password: ")
+bachelor = input(
+    "What do you expect of your bachelorthesis? (or leave it empty by hitting enter. Caution: avg grade might vary) "
+)
+
+bachelor = bachelor.replace(",", ".")
+
 
 browser["asdf"] = username
 browser["fdsa"] = password
@@ -35,43 +41,93 @@ except mechanicalsoup.utils.LinkNotFoundError:
     print("There was an error while navigating to the Notenspiegel page, try again.")
     exit()
 
-tableData = browser.page.find_all("td", {"class": "tabelle1"})
+table = browser.page.find("table", {"cellspacing": 0})
+tableData = table.find_all("tr")
 
-dataCounter = 1
-tmpList = []
-finalGradeList = []
+hauptstudiumIndex = 0
 
-for data in tableData:
-    if dataCounter < 12:
-        tmpList.append(data.string.strip())
-        dataCounter += 1
-    elif dataCounter == 12:
-        finalGradeList.append({"lectureNumber": tmpList[0],
-                               "lectureName": tmpList[2], 
-                               "semester": tmpList[4],
-                               "grade": tmpList[5],
-                               "status": tmpList[6],
-                               "ects": tmpList[7],
-                               "sws": tmpList[8],
-                               "trys": tmpList[10]})
-        tmpList = []
-        dataCounter = 1
+for data in tableData[1:]:
+    if data.find("th") and data.find("th").get_text() == "Hauptstudium":
+        hauptstudiumIndex = tableData.index(data)
 
-sumGradeTimeEcts = 0
-sumEcts = 0
+
+grundstudiumGrades = []
+hauptstudiumGrades = []
+
+for data in tableData[2:hauptstudiumIndex]:
+    grundstudiumGrades.append(
+        {
+            "lectureNumber": data.find_all("td", {"class": "tabelle1"})[
+                0
+            ].string.strip(),
+            "lectureName": data.find_all("td", {"class": "tabelle1"})[2].string.strip(),
+            "semester": data.find_all("td", {"class": "tabelle1"})[4].string.strip(),
+            "grade": data.find_all("td", {"class": "tabelle1"})[5].string.strip(),
+            "status": data.find_all("td", {"class": "tabelle1"})[6].string.strip(),
+            "ects": data.find_all("td", {"class": "tabelle1"})[7].string.strip(),
+            "sws": data.find_all("td", {"class": "tabelle1"})[8].string.strip(),
+            "trys": data.find_all("td", {"class": "tabelle1"})[10].string.strip(),
+        }
+    )
+
+for data in tableData[hauptstudiumIndex + 1 :]:
+    hauptstudiumGrades.append(
+        {
+            "lectureNumber": data.find_all("td", {"class": "tabelle1"})[
+                0
+            ].string.strip(),
+            "lectureName": data.find_all("td", {"class": "tabelle1"})[2].string.strip(),
+            "semester": data.find_all("td", {"class": "tabelle1"})[4].string.strip(),
+            "grade": data.find_all("td", {"class": "tabelle1"})[5].string.strip(),
+            "status": data.find_all("td", {"class": "tabelle1"})[6].string.strip(),
+            "ects": data.find_all("td", {"class": "tabelle1"})[7].string.strip(),
+            "sws": data.find_all("td", {"class": "tabelle1"})[8].string.strip(),
+            "trys": data.find_all("td", {"class": "tabelle1"})[10].string.strip(),
+        }
+    )
+
+
+grundstudiumSumGradeTimeEcts = 0
+grundstudiumSumEcts = 0
+
+hauptstudiumSumGradeTimeEcts = 0
+hauptstudiumSumEcts = 0
+
 notGradedLecture = 0
 
-for grade in finalGradeList:
-    sumEcts += int(grade["ects"])
+for grade in grundstudiumGrades:
+    grundstudiumSumEcts += int(grade["ects"])
 
     if grade["status"] == "angemeldet":
         notGradedLecture += 1
 
     if not grade["grade"]:
-        sumGradeTimeEcts += int(grade["ects"]) * 1
-    else :
+        grundstudiumSumGradeTimeEcts += int(grade["ects"]) * 1
+    else:
         strGrade = grade["grade"].replace(",", ".")
-        sumGradeTimeEcts += int(grade["ects"]) * float(strGrade)
+        grundstudiumSumGradeTimeEcts += int(grade["ects"]) * float(strGrade)
+
+for grade in hauptstudiumGrades:
+    hauptstudiumSumEcts += int(grade["ects"])
+
+    if grade["status"] == "angemeldet":
+        notGradedLecture += 1
+
+    if not grade["grade"]:
+        hauptstudiumSumGradeTimeEcts += int(grade["ects"]) * 1
+    else:
+        strGrade = grade["grade"].replace(",", ".")
+        hauptstudiumSumGradeTimeEcts += int(grade["ects"]) * float(strGrade)
+
+
+sumEcts = grundstudiumSumEcts + hauptstudiumSumEcts
+sumGradeTimeEcts = grundstudiumSumGradeTimeEcts + hauptstudiumSumGradeTimeEcts
+
+
+avgGrund = grundstudiumSumGradeTimeEcts / grundstudiumSumEcts
+avgHaupt = hauptstudiumSumGradeTimeEcts / hauptstudiumSumEcts
+
+bachelorGrade = 0
 
 
 print()
@@ -81,7 +137,19 @@ print("Bisher bewertete ECTS:                   ", sumEcts)
 print("Fehlende ECTS:                           ", 210 - sumEcts)
 print("Fehlende ECTS (ohne BA):                 ", 198 - sumEcts)
 print("Angemeldete Prüfung:                     ", notGradedLecture)
-print("Durchschnitts Note (ohne Gewichtung):    ", round(sumGradeTimeEcts / sumEcts, 2))
+print("Durchschnitts Note Grundstudium:         ", round(avgGrund, 2))
+print("Durchschnitts Note Hauptstudium:         ", round(avgHaupt, 2))
+
+if bachelor:
+    print(
+        "Durchschnitts Note MIT BA Schätzung:     ",
+        round(avgGrund * 0.15 + (avgHaupt) * 0.7 + float(bachelor) * 0.15, 2),
+    )
+else:
+    print(
+        "Durchschnitts Note OHNE BA Schätzung:    ",
+        round(avgGrund * 0.15 + (avgHaupt) * 0.7, 2),
+    )
 print()
 
 browser.close()
